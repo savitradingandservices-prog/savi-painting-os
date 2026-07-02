@@ -4,7 +4,7 @@
 // 1. Paste your deployed Web App URL here (Deploy → New deployment → Web app).
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwgGMAIVQg7bLSSixqn3-pWpu1aWoErOIjV2PMAJWdP1r9DradlU0dkgDIFoqsbzRSu/exec";
 // 2. Paste the same API_KEY you set in Script Properties.
-const API_KEY = "PASTE_YOUR_API_KEY_HERE";
+const API_KEY = "savi2026key789";
 
 // Internal: POST with text/plain content-type avoids a CORS preflight
 // (Apps Script web apps don't handle OPTIONS requests, so a "simple request"
