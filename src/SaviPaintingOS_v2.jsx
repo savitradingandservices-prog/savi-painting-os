@@ -1,7 +1,8 @@
 // SaviPaintingOS v2 — 8 fully integrated modules
 // Dashboard + Leads + Customers + Measurement + Quotation + Invoice + Projects + Labour
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { api } from "./api-client";
 
 const C = { navy:"#1A2B4A",navy2:"#243560",saffron:"#F5A623",chalk:"#F5F2EE",rust:"#C0392B",green:"#27AE60",slate:"#64748B",white:"#FFFFFF",border:"#E2D9CF",purple:"#7F77DD",purpleLight:"#EEEDFE" };
 const n = v => Math.round(v).toLocaleString("en-IN");
@@ -868,18 +869,9 @@ const VENDORS = [
   { id:"V4",name:"Tool House",cat:"Tools + Sundry",phone:"9543210987",area:"Camp" },
 ];
 const Inventory = () => {
-  const [items,setItems] = useState([
-    { id:"IT-001",name:"Asian Paints Royale",cat:"Paint",brand:"Asian Paints",unit:"Litre",stock:42,minStock:20,rate:185,vendor:"V1",lastPurchase:"20 Jun" },
-    { id:"IT-002",name:"Asian Paints Primer",cat:"Primer",brand:"Asian Paints",unit:"Litre",stock:8,minStock:15,rate:95,vendor:"V1",lastPurchase:"15 Jun" },
-    { id:"IT-003",name:"Birla Wall Putty",cat:"Putty",brand:"Other",unit:"Bag",stock:5,minStock:10,rate:420,vendor:"V2",lastPurchase:"10 Jun" },
-    { id:"IT-004",name:"Nerolac Excel Total",cat:"Paint",brand:"Nerolac",unit:"Litre",stock:28,minStock:15,rate:165,vendor:"V3",lastPurchase:"22 Jun" },
-    { id:"IT-005",name:"Dr. Fixit Waterproof",cat:"Waterproofing",brand:"Other",unit:"Kg",stock:0,minStock:10,rate:280,vendor:"V2",lastPurchase:"5 Jun" },
-    { id:"IT-006",name:"Asian Paints Apex",cat:"Paint",brand:"Asian Paints",unit:"Litre",stock:35,minStock:20,rate:145,vendor:"V1",lastPurchase:"18 Jun" },
-    { id:"IT-007",name:"Texture Compound",cat:"Texture",brand:"Other",unit:"Kg",stock:22,minStock:15,rate:320,vendor:"V2",lastPurchase:"25 Jun" },
-    { id:"IT-008",name:"Paint Brushes",cat:"Tools",brand:"Other",unit:"Piece",stock:3,minStock:10,rate:85,vendor:"V4",lastPurchase:"1 Jun" },
-    { id:"IT-009",name:"Masking Tape",cat:"Sundry",brand:"Other",unit:"Roll",stock:18,minStock:10,rate:45,vendor:"V4",lastPurchase:"20 Jun" },
-    { id:"IT-010",name:"Berger WeatherCoat",cat:"Paint",brand:"Berger",unit:"Litre",stock:15,minStock:20,rate:175,vendor:"V3",lastPurchase:"12 Jun" },
-  ]);
+  const [items,setItems] = useState([]);
+  const [loading,setLoading] = useState(true);
+  const [loadError,setLoadError] = useState(null);
   const [sel,setSel] = useState(null);
   const [search,setSearch] = useState("");
   const [filterCat,setFilterCat] = useState("All");
@@ -888,6 +880,13 @@ const Inventory = () => {
   const [adjType,setAdjType] = useState("add");
   const [form,setForm] = useState({ name:"",cat:"Paint",brand:"Asian Paints",unit:"Litre",stock:"",minStock:"",rate:"",vendor:"V1" });
   const sf = k => v => setForm({...form,[k]:v.target.value});
+
+  useEffect(() => {
+    api.list("Inventory")
+      .then(data => setItems(data.map(d => ({ ...d, stock:Number(d.stock)||0, minStock:Number(d.minStock)||0, rate:Number(d.rate)||0 }))))
+      .catch(err => setLoadError(String(err.message||err)))
+      .finally(() => setLoading(false));
+  }, []);
 
   const stockStatus = item => {
     if(item.stock===0) return { bg:"#F1EFE8",c:"#444441",label:"Out of stock" };
@@ -906,23 +905,43 @@ const Inventory = () => {
   const selItem = sel ? items.find(i=>i.id===sel) : null;
   const vend = selItem ? VENDORS.find(v=>v.id===selItem.vendor) : null;
 
-  const adjustStock = () => {
+  const adjustStock = async () => {
     const qty = parseFloat(adjQty)||0;
     if(qty<=0||!sel) return;
-    setItems(items.map(i=>{
-      if(i.id!==sel) return i;
-      if(adjType==="add") return { ...i,stock:i.stock+qty,lastPurchase:new Date().toLocaleDateString("en-IN",{day:"numeric",month:"short"}) };
-      return { ...i,stock:Math.max(0,i.stock-qty) };
-    }));
-    setAdjQty("");
+    const current = items.find(i=>i.id===sel);
+    if(!current) return;
+    const newStock = adjType==="add" ? current.stock+qty : Math.max(0,current.stock-qty);
+    const patch = adjType==="add"
+      ? { stock:newStock, lastPurchase:new Date().toLocaleDateString("en-IN",{day:"numeric",month:"short"}) }
+      : { stock:newStock };
+    try {
+      const updated = await api.update("Inventory", sel, patch);
+      setItems(items.map(i=>i.id===sel?{ ...i,...updated,stock:Number(updated.stock)||0 }:i));
+      setAdjQty("");
+    } catch(err) {
+      alert("Couldn't save the stock change — check your internet connection and try again.");
+    }
   };
-  const saveItem = () => {
+  const saveItem = async () => {
     if(!form.name) return;
-    const id = `IT-0${items.length+1}`;
-    setItems([...items,{ id,name:form.name,cat:form.cat,brand:form.brand,unit:form.unit,stock:parseFloat(form.stock)||0,minStock:parseFloat(form.minStock)||5,rate:parseFloat(form.rate)||0,vendor:form.vendor,lastPurchase:"—" }]);
-    setShowAdd(false);
-    setForm({ name:"",cat:"Paint",brand:"Asian Paints",unit:"Litre",stock:"",minStock:"",rate:"",vendor:"V1" });
+    const newItem = { name:form.name,cat:form.cat,brand:form.brand,unit:form.unit,stock:parseFloat(form.stock)||0,minStock:parseFloat(form.minStock)||5,rate:parseFloat(form.rate)||0,vendor:form.vendor,lastPurchase:"—" };
+    try {
+      const saved = await api.create("Inventory", newItem);
+      setItems([...items,{ ...saved,stock:Number(saved.stock)||0,minStock:Number(saved.minStock)||0,rate:Number(saved.rate)||0 }]);
+      setShowAdd(false);
+      setForm({ name:"",cat:"Paint",brand:"Asian Paints",unit:"Litre",stock:"",minStock:"",rate:"",vendor:"V1" });
+    } catch(err) {
+      alert("Couldn't save the item — check your internet connection and try again.");
+    }
   };
+
+  if(loading) return <div style={{ padding:40,textAlign:"center",color:"#aaa",fontSize:13 }}>Loading inventory from Google Sheets...</div>;
+  if(loadError) return (
+    <div style={{ padding:20,background:"#FCEBEB",border:"0.5px solid #F09595",borderRadius:10,color:"#791F1F",fontSize:13 }}>
+      Couldn't load inventory: {loadError}<br />
+      <span style={{ fontSize:11,color:"#A32D2D" }}>Check that SCRIPT_URL and API_KEY in api-client.js are correct, and that the Apps Script deployment access is set to "Anyone".</span>
+    </div>
+  );
 
   return (
     <div>
